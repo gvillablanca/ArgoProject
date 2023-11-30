@@ -1,0 +1,82 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: rescate-interfaz
+  namespace: portabilidad-ff
+spec:
+  schedule: "0 12 * * *"
+  timezone: "America/Santiago"   # Default to local machine timezone
+  startingDeadlineSeconds: 0
+  concurrencyPolicy: "Replace"      # Default to "Allow"
+  successfulJobsHistoryLimit: 4     # Default 3
+  failedJobsHistoryLimit: 4         # Default 1
+  suspend: false                    # Set to "true" to suspend scheduling
+  workflowSpec:
+    entrypoint: renombre-de-archivos-template
+    parallelism: 1
+    imagePullSecrets:
+      - name: ${IMAGEPULLSECRETS}
+    arguments:
+      parameters:
+        - name: nombre-archivo
+          value: "PCCMI_OPERACIONES_HIPOTECARIO231112.csv"
+    templates:
+      - name: renombre-de-archivos-template
+        steps:
+          - - name: rescate-interfaz
+              template: rescate-interfaz-template
+              arguments:
+                parameters:
+                - name: nombre-archivo
+                  value: "{{workflow.parameters.nombre-archivo}}"
+          - - name: renombrado-archivo
+              template: renombrado-archivo-template
+              arguments:
+                artifacts:
+                - name: interfaz-in
+                  from: "{{steps.rescate-interfaz.outputs.artifacts.interfaz-in}}"
+          - - name: envio-archivo
+              template: envio-archivo-template
+              arguments:
+                artifacts:
+                - name: interfaz-out
+                  from: "{{steps.renombrado-archivo.outputs.artifacts.interfaz-out}}"
+      - name: rescate-interfaz-template
+        script:
+          image: ictu/sshpass:latest
+          command: [sh]
+          source: |
+            mkdir ~/.ssh
+            ssh-keyscan -H 10.140.2.48 > ~/.ssh/known_hosts
+            sshpass -p bcofal123 scp bcofalcorecl_ftp@10.140.2.48:/bco_a_fal/PCCMI_OPERACIONES_HIPOTECARIO231112.csv /tmp
+        outputs:
+          artifacts:
+          - name: interfaz-in
+            path: /tmp/PCCMI_OPERACIONES_HIPOTECARIO231112.csv
+      - name: renombrado-archivo-template
+        script:
+          image: alpine:latest
+          command: [sh]
+          source: |
+            echo renombrendo archivo
+            cp /tmp/PCCMI_OPERACIONES_HIPOTECARIO231112.csv /tmp/PCCMI_OPERACIONES_HIPOTECARIO231112-new.csv
+        inputs:
+          artifacts:
+          - name: interfaz-in
+            path: /tmp/PCCMI_OPERACIONES_HIPOTECARIO231112.csv
+        outputs:
+          artifacts:
+          - name: interfaz-out
+            path: /tmp/PCCMI_OPERACIONES_HIPOTECARIO231112-new.csv
+      - name: envio-archivo-template
+        script:
+          image: ictu/sshpass:latest
+          command: [sh]
+          source: |
+            mkdir ~/.ssh
+            ssh-keyscan -H 10.140.2.48 > ~/.ssh/known_hosts
+            sshpass -p bcofal123 scp /tmp/PCCMI_OPERACIONES_HIPOTECARIO231112-new.csv bcofalcorecl_ftp@10.140.2.48:/bco_a_fal
+        inputs:
+          artifacts:
+          - name: interfaz-out
+            path: /tmp/PCCMI_OPERACIONES_HIPOTECARIO231112-new.csv
