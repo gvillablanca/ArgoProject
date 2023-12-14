@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: guestbook
+  name: guestbook #siempre hacia argo
   namespace: argocd
 spec:
   source:
@@ -10,5 +10,5 @@ spec:
     targetRevision: HEAD
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: test-argopj
+    namespace: test-argopj #a que ns debe ir porque esta es la aplicacion que desplegare
   project: default
